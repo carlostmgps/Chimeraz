@@ -1,0 +1,101 @@
+Describe the 3D shape (e.g., 'A simple cube with 20mm sides'): a 8cm diameter cup with round bottom
+Requesting AI to write the generation logic...
+
+--- Generated Code ---
+import numpy as np
+from stl import mesh
+
+# Parameters
+radius = 4.0            # 8 cm diameter, so radius = 4 cm
+height = 10.0           # cup height in cm
+round_bottom_radius = 4.0
+round_bottom_center_z = round_bottom_radius  # center of hemisphere at z=4 (so bottom is at z=0)
+n_circle = 40           # number of points around circle
+n_height = 20           # vertical resolution for cup wall
+n_hemisphere = 10       # vertical resolution for hemisphere
+
+# Create arrays to hold vertices
+vertices = []
+faces = []
+
+# Utility to add face (triangle) given indices
+def add_face(a,b,c):
+    faces.append([a,b,c])
+
+# Generate ring points for cup wall (cylindrical section)
+# Height from hemisphere top (z=4) up to cup height (z=10)
+z_vals = np.linspace(round_bottom_center_z, height, n_height)
+angles = np.linspace(0, 2*np.pi, n_circle, endpoint=False)
+circle_pts = np.array([[radius*np.cos(a), radius*np.sin(a)] for a in angles])
+
+# Store indices of vertices in a grid: height x circle point
+wall_vertices_idx = []
+for i,z in enumerate(z_vals):
+    idx_row = []
+    for x,y in circle_pts:
+        vertices.append([x,y,z])
+        idx_row.append(len(vertices)-1)
+    wall_vertices_idx.append(idx_row)
+
+# Generate hemisphere bottom (round bottom)
+# Hemisphere centered at (0,0,4) radius 4
+# We'll generate points on hemisphere from top (z=4+4=8) down to bottom (z=0)                   # Actually, since hemisphere is part of bottom, center at z=4, radius=4
+# hemisphere param: angles from 0 (top) to pi/2 (equator, z=4)                                  theta = np.linspace(0, np.pi/2, n_hemisphere)  # from top of hemisphere to equator              phi = angles
+
+hemisphere_vertices_idx = []
+for i,t in enumerate(theta):                        ring = []
+    z = round_bottom_center_z + round_bottom_radius * np.cos(t)
+    r_ring = round_bottom_radius * np.sin(t)
+    for a in phi:
+        x = r_ring * np.cos(a)
+        y = r_ring * np.sin(a)
+        vertices.append([x,y,z])
+        ring.append(len(vertices)-1)
+    hemisphere_vertices_idx.append(ring)        
+# Add bottom center vertex for closing hemisphere (pole)
+vertices.append([0,0,round_bottom_center_z - round_bottom_radius])  # bottom pole               bottom_pole_idx = len(vertices)-1
+
+# Build faces for hemisphere
+for i in range(n_hemisphere-1):
+    ring1 = hemisphere_vertices_idx[i]
+    ring2 = hemisphere_vertices_idx[i+1]            for j in range(n_circle):
+        next_j = (j+1) % n_circle                       # create two triangles for quad between ring1 and ring2
+        add_face(ring1[j], ring2[j], ring2[next_j])                                                     add_face(ring1[j], ring2[next_j], ring1[next_j])                                                                                        # Close bottom cap of hemisphere (triangle fan from bottom pole to last ring)
+last_ring = hemisphere_vertices_idx[-1]         for j in range(n_circle):                           next_j = (j+1) % n_circle                       add_face(bottom_pole_idx, last_ring[next_j], last_ring[j])                                                                                  # Connect hemisphere top equator ring to cup wall bottom ring
+# hemisphere top ring = hemisphere_vertices_idx[0]
+# cup wall bottom ring = wall_vertices_idx[0]
+top_hemi_ring = hemisphere_vertices_idx[0]      bottom_wall_ring = wall_vertices_idx[0]
+for j in range(n_circle):                           next_j = (j+1) % n_circle
+    # two triangles between hemisphere equator and cup wall bottom
+    add_face(top_hemi_ring[j], bottom_wall_ring[j], bottom_wall_ring[next_j])
+    add_face(top_hemi_ring[j], bottom_wall_ring[next_j], top_hemi_ring[next_j])
+
+# Build faces for cup wall (side surface)
+for i in range(n_height-1):
+    ring1 = wall_vertices_idx[i]
+    ring2 = wall_vertices_idx[i+1]
+    for j in range(n_circle):
+        next_j = (j+1) % n_circle
+        add_face(ring1[j], ring2[j], ring2[next_j])
+        add_face(ring1[j], ring2[next_j], ring1[next_j])
+
+# Create top cap - flat circle at top (close the cup top)
+# add center vertex
+vertices.append([0,0,height])
+top_center_idx = len(vertices)-1
+top_ring = wall_vertices_idx[-1]
+for j in range(n_circle):
+    next_j = (j+1) % n_circle                       add_face(top_center_idx, top_ring[j], top_ring[next_j])                                     
+# Convert vertices and faces to numpy arrays
+vertices_np = np.array(vertices)
+faces_np = np.array(faces)
+                                                # Create mesh data for numpy-stl
+data = np.zeros(len(faces_np), dtype=mesh.Mesh.dtype)
+for i, f in enumerate(faces_np):
+    for j in range(3):
+        data["vectors"][i][j] = vertices_np[f[j], :]                                            
+cup_mesh = mesh.Mesh(data.copy())               cup_mesh.save('output_model.stl')
+----------------------
+
+Executing generated script...
+Success! 'output_model.stl' has been created. 
